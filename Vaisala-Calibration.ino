@@ -16,6 +16,9 @@
 #include <NTP.h>
 #include <Wire.h>
 #include "HMP155.h"
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
+#define SEALEVELPRESSURE_HPA (1013.25)
 
 #define GLED 22
 #define RLED 23
@@ -57,23 +60,34 @@ char  sht21_vpd_str[16];
 char sht21g_humi_str[16];
 char sht21g_vp_str[16];
 char sht21g_vpd_str[16];
+char bme280_temp_str[16];
+char bme280_humi_str[16];
+char bme280_vp_str[16];
+char bme280_vpd_str[16];
+char daylight_str[16];
 struct fiap_element fiap_elements [] = {
   { "HMP155_Temperature", hmp155_temp_str, 0, &localtimezone, },
   { "HMP155_Humidity", hmp155_humi_str, 0, &localtimezone, },
   { "HMP155_VP", hmp155_vp_str, 0, &localtimezone, },
   { "HMP155_VPD", hmp155_vpd_str, 0, &localtimezone, },
-  { "SHT21_Temperature", sht21_temp_str, 0, &localtimezone, },
-  { "SHT21_Humidity", sht21_humi_str, 0, &localtimezone, },
-  { "SHT21_VP", sht21_vp_str, 0, &localtimezone, },
-  { "SHT21_VPD", sht21_vpd_str, 0, &localtimezone, },
-  { "SHT21_GuessHumidity", sht21g_humi_str, 0, &localtimezone, },
-  { "SHT21_GuessVP", sht21g_vp_str, 0, &localtimezone, },
-  { "SHT21_GuessVPD", sht21g_vpd_str, 0, &localtimezone, },
+  //  { "BME280_Temperature", bme280_temp_str, 0, &localtimezone, },
+  //  { "BME280_Humidity", bme280_humi_str, 0, &localtimezone, },
+  //  { "BME280_VP", bme280_vp_str, 0, &localtimezone, },
+  //  { "BME280_VPD", bme280_vpd_str, 0, &localtimezone, },
+  //  { "SHT21_Temperature", sht21_temp_str, 0, &localtimezone, },
+  //  { "SHT21_Humidity", sht21_humi_str, 0, &localtimezone, },
+  //  { "SHT21_VP", sht21_vp_str, 0, &localtimezone, },
+  //  { "SHT21_VPD", sht21_vpd_str, 0, &localtimezone, },
+  //  { "SHT21_GuessHumidity", sht21g_humi_str, 0, &localtimezone, },
+  //  { "SHT21_GuessVP", sht21g_vp_str, 0, &localtimezone, },
+  //  { "SHT21_GuessVPD", sht21g_vpd_str, 0, &localtimezone, },
+  { "PCM01_Daylight", daylight_str, 0, &localtimezone, },
 };
 
 // sensor
-SHT2x sht_sensor;
 HMP155 vaisala(Serial2, 24);
+//SHT2x sht_sensor;
+//Adafruit_BME280 bme; // I2C
 
 // Return the satureted Vapour pressure at the temperature
 double temp2svp( double temp ) {
@@ -139,18 +153,22 @@ void setup()
   }
   setTime(unix_time);
 
-  // fiap
+  // fiape
   fiap_upload_agent.begin(host.get_val(), path.get_val(), port.get_val(), prefix.get_val());
 
   // sensor
-  Wire.begin();
-  sht_sensor.begin();
-  sht_sensor.heaterOn();
-  Serial.println("SHT21 Ready");
+  Serial.println("Vaisala Begin");
+  //  Wire.begin();
+  //  sht_sensor.begin();
+  //  sht_sensor.heaterOff();
+  //  Serial.println("SHT21 Ready");
   Serial2.begin(4800, SERIAL_7E1);
   pinMode(24, OUTPUT);
   vaisala.begin();
   Serial.println("Vaisala Ready");
+  //  bme.begin(0x76);
+  //  Serial.println("BME280 Ready");
+
   pinMode(GLED, OUTPUT);
   pinMode(RLED, OUTPUT);
   digitalWrite(RLED, HIGH); // LED on when pin is High
@@ -167,8 +185,9 @@ void loop()
   }
 
   if (epoch != old_epoch) {
-    char buf[120] = ",HMP155,";
+    char buf[120];
     char bufbuf[8];
+    buf[0]='\0';
 
     vaisala.read();
     float hmp155_temp = vaisala.ta();
@@ -180,26 +199,6 @@ void loop()
     dtostrf(hmp155_vp, -1, 2, hmp155_vp_str);
     float hmp155_vpd = (hmp155_svp - hmp155_vp) / 1000.0; // Vapour Pressure Deficit [hPa]
     dtostrf(hmp155_vpd, -1, 4, hmp155_vpd_str);
-
-    float sht21_temp = sht_sensor.readTemperature();
-    dtostrf(sht21_temp, -1, 2, sht21_temp_str);
-    float sht21_humi = sht_sensor.readHumidity();
-    dtostrf(sht21_humi, -1, 2, sht21_humi_str);
-    float sht21_svp = temp2svp(sht21_temp); // Saturated Vapour Pressure [Pa]
-    float sht21_vp = sht21_svp * sht21_humi / 100.0;  // Vapour Pressure [Pa]
-    dtostrf(sht21_vp, -1, 2, sht21_vp_str);
-    float sht21_vpd = (sht21_svp - sht21_vp) / 1000.0; // Vapour Pressure Deficit [hPa]
-    dtostrf(sht21_vpd, -1, 4, sht21_vpd_str);
-
-    //    float sht21g_humi = 1.2225 * sht21_humi -16.229; // approximate Vaisala (Cloudy)
-    float sht21g_humi = 1.2419 * sht21_humi - 18.064; // approximate Vaisala (Sunny)
-    dtostrf(sht21g_humi, -1, 2, sht21g_humi_str);
-    float sht21g_svp = temp2svp(hmp155_temp); // Saturated Vapour Pressure [Pa]
-    float sht21g_vp = sht21g_svp * sht21g_humi / 100.0; // Vapour Pressure [Pa]
-    dtostrf(sht21g_vp, -1, 2, sht21g_vp_str);
-    float sht21g_vpd = (sht21g_svp - sht21g_vp) / 1000.0; // Vapour Pressure Deficit [hPa]
-    dtostrf(sht21g_vpd, -1, 4, sht21g_vpd_str);
-
     strcat(buf, hmp155_temp_str);
     strcat(buf, ",");
     strcat(buf, hmp155_humi_str);
@@ -207,26 +206,78 @@ void loop()
     strcat(buf, hmp155_vp_str);
     strcat(buf, ",");
     strcat(buf, hmp155_vpd_str);
-    strcat(buf, ",SHT21,");
-    strcat(buf, sht21_temp_str);
-    strcat(buf, ",");
-    strcat(buf, sht21_humi_str);
-    strcat(buf, ",");
-    strcat(buf, sht21_vp_str);
-    strcat(buf, ",");
-    strcat(buf, sht21_vpd_str);
-    strcat(buf, ",SHT21Guess,");
-    strcat(buf, sht21g_humi_str);
-    strcat(buf, ",");
-    strcat(buf, sht21g_vp_str);
-    strcat(buf, ",");
-    strcat(buf, sht21g_vpd_str);
-    debug_msg(buf);
-    //    Serial.println(buf);
 
-    if (epoch % 30 == 0) {
+    int A0value = analogRead(A0); // 3.5Vで1000w/m^2, およそ1Vで真っ暗
+    double daylight = 2.004 * double(A0value) - 436.0; // 218で0, 717で1000換算してy=ax+bを算出
+    daylight = ( daylight > 0 ) ? daylight : 0.0; // マイナスなら0にする
+    dtostrf(daylight, -1, 2, daylight_str);
+    strcat(buf, ",Daylight=");
+    strcat(buf, daylight_str);
+    strcat(buf, "[W/m^2]");
+    
+    debug_msg(buf);
+
+    if (epoch % 60 == 0) {
       debug_msg("uploading...");
       digitalWrite(GLED, HIGH); // LED on when pin is High
+
+
+      //      float bme280_temp = bme.readTemperature();
+      //      dtostrf(bme280_temp, -1, 2, bme280_temp_str);
+      //      float bme280_humi = bme.readHumidity();
+      //      dtostrf(bme280_humi, -1, 2, bme280_humi_str);
+      //      float bme280_svp = temp2svp(bme280_temp); // Saturated Vapour Pressure [Pa]
+      //      float bme280_vp = bme280_svp * bme280_humi / 100.0; // Vapour Pressure [Pa]
+      //      dtostrf(bme280_vp, -1, 2, bme280_vp_str);
+      //      float bme280_vpd = (bme280_svp - bme280_vp) / 1000.0; // Vapour Pressure Deficit [hPa]
+      //      dtostrf(bme280_vpd, -1, 4, bme280_vpd_str);
+      //      float bme280_pres = bme.readPressure() / 100.0; // hPa
+      //      dtostrf(bme280_pres, -1, 4, buf);
+      //
+      //      float sht21_temp = sht_sensor.readTemperature();
+      //      dtostrf(sht21_temp, -1, 2, sht21_temp_str);
+      //      float sht21_humi = sht_sensor.readHumidity();
+      //      dtostrf(sht21_humi, -1, 2, sht21_humi_str);
+      //      float sht21_svp = temp2svp(sht21_temp); // Saturated Vapour Pressure [Pa]
+      //      float sht21_vp = sht21_svp * sht21_humi / 100.0;  // Vapour Pressure [Pa]
+      //      dtostrf(sht21_vp, -1, 2, sht21_vp_str);
+      //      float sht21_vpd = (sht21_svp - sht21_vp) / 1000.0; // Vapour Pressure Deficit [hPa]
+      //      dtostrf(sht21_vpd, -1, 4, sht21_vpd_str);
+      //
+      //      //    float sht21g_humi = 1.2225 * sht21_humi -16.229; // approximate Vaisala (Cloudy)
+      //      float sht21g_humi = 1.2419 * sht21_humi - 18.064; // approximate Vaisala (Sunny)
+      //      dtostrf(sht21g_humi, -1, 2, sht21g_humi_str);
+      //      float sht21g_svp = temp2svp(hmp155_temp); // Saturated Vapour Pressure [Pa]
+      //      float sht21g_vp = sht21g_svp * sht21g_humi / 100.0; // Vapour Pressure [Pa]
+      //      dtostrf(sht21g_vp, -1, 2, sht21g_vp_str);
+      //      float sht21g_vpd = (sht21g_svp - sht21g_vp) / 1000.0; // Vapour Pressure Deficit [hPa]
+      //      dtostrf(sht21g_vpd, -1, 4, sht21g_vpd_str);
+
+      //      strcat(buf, ",BME280,");
+      //      strcat(buf, bme280_temp_str);
+      //      strcat(buf, ",");
+      //      strcat(buf, bme280_humi_str);
+      //      strcat(buf, ",");
+      //      strcat(buf, bme280_vp_str);
+      //      strcat(buf, ",");
+      //      strcat(buf, bme280_vpd_str);
+      //      strcat(buf, ",SHT21,");
+      //      strcat(buf, sht21_temp_str);
+      //      strcat(buf, ",");
+      //      strcat(buf, sht21_humi_str);
+      //      strcat(buf, ",");
+      //      strcat(buf, sht21_vp_str);
+      //      strcat(buf, ",");
+      //      strcat(buf, sht21_vpd_str);
+      //      strcat(buf, ",SHT21Guess,");
+      //      strcat(buf, sht21g_humi_str);
+      //      strcat(buf, ",");
+      //      strcat(buf, sht21g_vp_str);
+      //      strcat(buf, ",");
+      //      strcat(buf, sht21g_vpd_str);
+      //      debug_msg(buf);
+      //    Serial.println(buf);
+
 
       for (int i = 0; i < sizeof(fiap_elements) / sizeof(fiap_elements[0]); i++) {
         fiap_elements[i].time = epoch;
